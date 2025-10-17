@@ -22,22 +22,31 @@ func StartBinanceStream(symbols []string) {
 	if err != nil {
 		log.Fatal("Error while establishing connection with binance websocket: ", err)
 	}
+
+	defer conn.Close()
 	log.Println("connected binance websocket connection")
 
-	sub := BinanceSub{
-		Type:   "SUBSCRIBE",
-		Params: []string{},
-		ID:     1,
-	}
-
 	for _, s := range symbols {
-		sub.Params = append(sub.Params, s+"@trade")
+		sub := map[string]interface{}{
+			"method": "SUBSCRIBE",
+			"params": []string{s + "@trade"},
+			"id":     time.Now().Unix(),
+		}
+		if err := conn.WriteJSON(sub); err != nil {
+			log.Println("subscribe error:", err)
+		}
 	}
 
-	subMsg, _ := json.Marshal(sub)
-	if err := conn.WriteMessage(websocket.TextMessage, subMsg); err != nil {
-		log.Println("error while subscribe: ", err)
-	}
+	go func() {
+		for {
+			err := conn.WriteMessage(websocket.PingMessage, nil)
+			if err != nil {
+				log.Println("ping error", err)
+				return
+			}
+			time.Sleep(30 * time.Second)
+		}
+	}()
 
 	for {
 		_, msg, err := conn.ReadMessage()
@@ -47,25 +56,30 @@ func StartBinanceStream(symbols []string) {
 			continue
 		}
 
-		var data map[string]interface{}
+		var trade struct {
+			EventType string `json:"e"`
+			Symbol    string `json:"s"`
+			Price     string `json:"p"`
+			Quantity  string `json:"q"`
+		}
 
-		if err := json.Unmarshal(msg, &data); err != nil {
+		if err := json.Unmarshal(msg, &trade); err != nil {
 			continue
 		}
 
-		if data["e"] != "trade" {
+		if trade.EventType != "trade" {
 			continue
 		}
 
-		trade := model.Trade{
-			Symbol:    data["symbol"].(string),
-			Price:     data["price"].(string),
-			Quantity:  data["quantity"].(string),
+		data := model.Trade{
+			Symbol:    trade.Symbol,
+			Price:     trade.Price,
+			Quantity:  trade.Quantity,
 			Timestamp: time.Now(),
 		}
 
-		_, err = database.DB.Exec(`INSERT INTO trades (symbol, price, quantity) VALUES ($1,$2,$3,$4)`,
-			trade.Symbol, trade.Price, trade.Quantity, trade.Timestamp)
+		_, err = database.DB.Exec(`INSERT INTO trades (symbol, price, quantity, timestamp) VALUES ($1,$2,$3,$4)`,
+			data.Symbol, data.Price, data.Quantity, data.Timestamp)
 		if err != nil {
 			log.Println("Database insert Error: ", err)
 		}
