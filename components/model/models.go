@@ -1,11 +1,14 @@
 package model
 
-import "time"
-
 type Trade struct {
-	ID        int       `json:"id"`
-	Symbol    string    `json:"symbol"`
-	Price     string    `json:"price"`
-	Quantity  string    `json:"quantity"`
-	Timestamp time.Time `json:"timestamp" db:"timestamp"`
+	EventType     string `json:"e"`
+	EventTime     int64  `json:"E"`
+	Symbol        string `json:"s"`
+	TradeID       int64  `json:"t"`
+	Price         string `json:"p"`
+	Quantity      string `json:"q"`
+	BuyerOrderID  int64  `json:"b"`
+	SellerOrderID int64  `json:"a"`
+	TradeTime     int64  `json:"T"`
+	IsBuyerMaker  bool   `json:"m"`
 }
